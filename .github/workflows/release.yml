@@ -1,0 +1,84 @@
+name: Build & release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: SampleBrowser-windows-x64.exe
+          - os: macos-latest
+            asset: SampleBrowser-macos-arm64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Smoke test (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python tools/make_demo_samples.py demo_samples
+          python tools/smoke_test.py demo_samples
+
+      - name: Build Windows exe
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name SampleBrowser sample_browser.py
+          $p = Start-Process dist/SampleBrowser.exe -ArgumentList "--selftest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "packaged selftest failed: $($p.ExitCode)" }
+          Move-Item dist/SampleBrowser.exe ${{ matrix.asset }}
+
+      - name: Build macOS app
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconfirm --windowed --name "Sample Browser" \
+            --osx-bundle-identifier io.github.executionreverted.samplebrowser sample_browser.py
+          "dist/Sample Browser.app/Contents/MacOS/Sample Browser" --selftest
+          ditto -c -k --keepParent "dist/Sample Browser.app" ${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<'EOF'
+          **Windows:** download `SampleBrowser-windows-x64.exe` and run it. If SmartScreen warns, click *More info → Run anyway* (the app is not code-signed).
+
+          **macOS (Apple Silicon):** download `SampleBrowser-macos-arm64.zip`, unzip, move *Sample Browser* to Applications. The first time, right-click → *Open*; if macOS still blocks it, go to *System Settings → Privacy & Security → Open Anyway*.
+
+          See the [README](https://github.com/${{ github.repository }}#readme) for how to use it.
+          EOF
+          gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" \
+            --title "Sample Browser $GITHUB_REF_NAME" --notes-file notes.md
