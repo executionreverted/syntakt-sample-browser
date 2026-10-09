@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 os.environ["SB_DATA_DIR"] = tempfile.mkdtemp(prefix="sb_smoke_")
+sys.stdout.reconfigure(encoding="utf-8")  # category names are Turkish; Windows CI consoles are cp1252
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import soundfile as sf  # noqa: E402
