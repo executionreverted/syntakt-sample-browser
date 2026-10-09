@@ -127,6 +127,16 @@ def main(samples_dir, shot=None):
         assert (info.samplerate, info.channels, info.subtype) == (48000, 1, "PCM_16")
     print("zip ok:", len(names), "files,", names[0], "...", names[-1])
 
+    # "Drag kit into Transfer": numbered, Syntakt-format copies in kit order
+    files = w.prepare_kit_files()
+    assert [f.name[:2] for f in files] == [f"{i:02d}" for i in range(1, 15)], [f.name for f in files]
+    assert files[-1].name.endswith("_loop.wav")
+    for f in files:
+        info = sf.info(str(f))
+        assert (info.samplerate, info.channels, info.subtype) == (48000, 1, "PCM_16"), f
+    assert w.drag_btn.isEnabled() and "14" in w.slot_warn.text() and w.slot_warn.isVisibleTo(w)
+    print("kit drag files ok:", files[0].name, "...", files[-1].name)
+
     # saved kits: save under a name, switch away, load it back from the combo
     w.kit_name = "Night Bus"
     w.save_kit(sb.KITS_DIR / "Night Bus.json")

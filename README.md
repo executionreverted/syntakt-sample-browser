@@ -40,7 +40,9 @@ fast. This app does the finding, listening and converting for you.
 - **Kit panel:** collect your sounds, **drag to reorder** (the order is the slot order), watch the *slots / MB*
   counter (64 / 32 MB), export them as numbered files. Sounds already in the kit are **highlighted in the table**
   with their slot number.
-- **One-file kits:** *Export .zip* writes the whole kit into a single zip — drop it on Transfer's Drop page.
+- **One drag for the whole kit:** drag the *Drag kit into Transfer* key onto Transfer and every sample goes
+  along, numbered in slot order and already converted. *Export .zip* is there for sharing and backups —
+  Transfer doesn't import zips of Syntakt samples (see Tips).
 - **Pads that sustain:** right-click a kit sample → *Loop in slot 2*. The app cuts a seamless loop from the
   sustained part of the sound. Twinshot loops sample slot 2 when the AMP mode is ADSR (or AHD with HOLD = NOTE).
 - **Saved kits:** name your kits and switch between them from the kit panel. *⋯ → Load kit from folder* turns
@@ -61,9 +63,12 @@ fast. This app does the finding, listening and converting for you.
 4. Add sounds to the kit: **double-click**, **Enter**, or drag them into the right panel (drop them exactly
    where you want them). Drag inside the kit to change the order.
 5. Get them onto the Syntakt — open **Elektron Transfer**, connect the Syntakt, then either:
-   - click **Export .zip** and drop that one file onto Transfer's **Drop** page, **or**
+   - **drag the *Drag kit into Transfer* key** (bottom right) onto Transfer, **or**
    - **drag** rows from the table or the kit panel into Transfer, **or**
    - click **Export to folder** and drag that folder's files into Transfer.
+
+   **Make sure the Syntakt has enough free sample slots first** (64 in total, shared by every project).
+   If there aren't enough, Transfer can hang. Free some up in Transfer → *Explore* → *Samples*.
 6. **Restart the Syntakt** so the new samples show up (Elektron's manual asks for this).
 7. Put the **SP Twinshot** machine on a digital track and choose your samples with SMP1 / SMP2.
 
@@ -83,6 +88,9 @@ fast. This app does the finding, listening and converting for you.
   Close Ableton (or any other DAW) and try again.
 - Twinshot plays two layers per track. A good trick: slot 1 = a short transient (rim, click, kick),
   slot 2 = a body or texture (pad stab, vinyl crackle).
+- **Zips don't load.** Elektron's Transfer manual says zips are supported, but with Transfer 1.10.3 and Syntakt
+  OS 1.42 a dropped zip of samples hangs on *Converting sample data* (even a plain, uncompressed one with two
+  files), while the same WAV files dragged in directly work. So drag files, not zips.
 - Sounds longer than 5 s are shown in orange. They still work, they just get cut with a fade.
 - **What's on my Syntakt right now?** In Transfer, open *Explore*, pick *Samples* on the device side and drag
   the folder to *My Computer*. Then use *⋯ → Load kit from folder* here to see and play it as a kit.
@@ -160,7 +168,9 @@ yorucu. Bu uygulama seçmeyi, dinlemeyi ve dönüştürmeyi kolaylaştırıyor.
   kesilmiş, en fazla 5 sn, −1 dB normalize).
 - **Kit paneli:** seslerini topla, **sürükleyerek sırala** (sıra = slot sırası), *slot / MB* sayacını takip et
   (64 / 32 MB), numaralı dosyalar olarak dışa aktar. Kitteki sesler **tabloda renkli** ve slot numarasıyla görünür.
-- **Tek dosyalık kit:** *.zip olarak aktar* bütün kiti tek zip'e yazar, Transfer'in Drop sayfasına bırakırsın.
+- **Tek sürüklemeyle bütün kit:** *Kiti Transfer'e sürükle* tuşunu Transfer'e bırak, tüm sample'lar slot sırasıyla
+  numaralanmış ve dönüştürülmüş olarak gider. *.zip olarak aktar* paylaşmak ve yedeklemek içindir; Transfer
+  Syntakt sample'larını zip'ten almıyor (denedik: “Converting sample data”da takılıyor).
 - **Süren pad'ler:** kitte sağ tık → *2. slotta loop*. Sesin sürekli kısmından çıt sesi olmadan dönen bir loop
   çıkarır. Twinshot, AMP modu ADSR ya da HOLD'u NOTE olan AHD iken 2. slotu loop'lar.
 - **Kayıtlı kitler:** kitlerine ad ver, kit panelinden aralarında geçiş yap. *⋯ → Klasörden kit yükle* herhangi bir
@@ -181,8 +191,9 @@ yorucu. Bu uygulama seçmeyi, dinlemeyi ve dönüştürmeyi kolaylaştırıyor.
 4. Kite eklemek için **çift tıkla**, **Enter**'a bas ya da sağdaki panelde istediğin yere sürükle.
    Zaten kitteyse aynı hareket kitten çıkarır. Kitin içinde sürükleyerek sırayı değiştir,
    **Del** ile çıkar, **Ctrl+↑/↓** ile kaydır.
-5. **Elektron Transfer**'i aç, Syntakt'ı bağla. **.zip olarak aktar** ile çıkan tek dosyayı Drop sayfasına bırak
-   ya da tablodan / kit panelinden sesleri Transfer'e **sürükle**.
+5. **Elektron Transfer**'i aç, Syntakt'ı bağla. Sağ alttaki **Kiti Transfer'e sürükle** tuşunu Transfer'e sürükle
+   ya da tablodan / kit panelinden sesleri tek tek **sürükle**. **Önce Syntakt'ta yeterince boş sample slotu
+   olduğundan emin ol** (toplam 64, tüm projeler ortak); yer yoksa aktarım takılabilir.
 6. **Syntakt'ı yeniden başlat**, yoksa yeni sample'lar görünmez (Elektron manuali böyle istiyor).
 7. Bir dijital track'e **SP Twinshot** makinesini koy, SMP1 / SMP2 ile sample'larını seç.
 

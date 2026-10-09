@@ -16,6 +16,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -39,7 +40,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboB
                              QMenu, QMessageBox, QProgressBar, QPushButton, QSlider, QSplitter, QStackedWidget,
                              QTableView, QToolButton, QToolTip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 def _data_dir():
     if os.environ.get("SB_DATA_DIR"):
@@ -61,6 +62,7 @@ DB_PATH = DATA_DIR / "library.db"
 CONVERT_DIR = DATA_DIR / "syntakt"
 KIT_FILE = DATA_DIR / "current_kit.json"
 KITS_DIR = DATA_DIR / "kits"
+KIT_DRAG_DIR = DATA_DIR / "kit_drag"  # numbered copies handed to Transfer by "Drag kit into Transfer"
 LOG_FILE = DATA_DIR / "log.txt"
 
 AUDIO_EXT = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg"}
@@ -105,7 +107,7 @@ STRINGS = {
         "close_similar": "× Close similar",
         "similar_banner": "Sounds closest in character to: <b>{name}</b> (category and character filters are off)",
         "kit_hint": "Drag samples here from the table, double-click, or press Enter. Drag to reorder. "
-                    "Anything you drag from here into Transfer is always in Syntakt format.",
+                    "To load the kit, drag the button at the bottom onto Transfer.",
         "kit_empty": "Your kit is empty.\nDouble-click sounds or drag them here.",
         "kit_remove": "Remove",
         "kit_clear": "Clear",
@@ -129,8 +131,16 @@ STRINGS = {
         "kit_export_folder": "Export to folder…",
         "kit_export_zip": "Export .zip…",
         "zip_save_title": "Save kit as .zip",
-        "zip_done": "Saved {n} samples to:\n{file}\n\nDrop this one file onto Transfer's Drop page. "
-                    "Then restart the Syntakt so the new samples show up.",
+        "zip_done": "Saved {n} samples to:\n{file}\n\nGood for sharing and backups. Note: Transfer may not import "
+                    "zips of Syntakt samples (it can hang on “Converting sample data”). To load the kit, use "
+                    "“Drag kit into Transfer”, or unzip and drag the files.",
+        "kit_drag": "⠿  Drag kit into Transfer",
+        "kit_drag_tip": "Drag this onto Transfer (Drop or Explore page). Every kit sample goes along, numbered in "
+                        "slot order and already in Syntakt format. Restart the Syntakt afterwards.",
+        "kit_drag_click": "Drag this button onto Transfer — clicking it does nothing.",
+        "slots_warning": "Make sure the Syntakt has at least {n} free sample slots (64 in total, shared by every "
+                         "project). If it doesn't, free some up in Transfer → Explore → Samples first, otherwise "
+                         "the transfer can hang.",
         "menu_play": "Play",
         "menu_loop": "Loop in slot 2 (pads)",
         "loop_tip": "Makes a seamless loop from the sustained part of the sound (max 5 s). Twinshot loops the "
@@ -250,7 +260,7 @@ STRINGS = {
         "similar_banner": "Ses karakteri en çok şuna benzeyenler: <b>{name}</b> "
                           "(kategori ve karakter filtreleri devre dışı)",
         "kit_hint": "Tablodan buraya sürükle, çift tıkla ya da Enter. Sırayı sürükleyerek değiştir. "
-                    "Buradan Transfer'e sürüklediklerin her zaman Syntakt formatındadır.",
+                    "Kiti yüklemek için alttaki tuşu Transfer'e sürükle.",
         "kit_empty": "Kit boş.\nSeslere çift tıkla ya da buraya sürükle.",
         "kit_remove": "Çıkar",
         "kit_clear": "Temizle",
@@ -274,8 +284,16 @@ STRINGS = {
         "kit_export_folder": "Klasöre aktar…",
         "kit_export_zip": ".zip olarak aktar…",
         "zip_save_title": "Kiti .zip olarak kaydet",
-        "zip_done": "{n} sample şu dosyaya kaydedildi:\n{file}\n\nBu tek dosyayı Transfer'in Drop sayfasına bırak. "
-                    "Sonra yeni sample'ların görünmesi için Syntakt'ı yeniden başlat.",
+        "zip_done": "{n} sample şu dosyaya kaydedildi:\n{file}\n\nPaylaşmak ve yedeklemek için uygun. Not: Transfer "
+                    "Syntakt sample'larını zip'ten almayabiliyor (“Converting sample data”da takılabiliyor). Kiti "
+                    "yüklemek için “Kiti Transfer'e sürükle”yi kullan ya da zip'i açıp dosyaları sürükle.",
+        "kit_drag": "⠿  Kiti Transfer'e sürükle",
+        "kit_drag_tip": "Bunu Transfer'e (Drop ya da Explore sayfasına) sürükle. Kitteki tüm sample'lar slot sırasıyla "
+                        "numaralanmış ve Syntakt formatında gider. Sonra Syntakt'ı yeniden başlat.",
+        "kit_drag_click": "Bu tuşu Transfer'e sürükle, tıklamak bir şey yapmaz.",
+        "slots_warning": "Syntakt'ta en az {n} boş sample slotu olduğundan emin ol (toplam 64, tüm projeler ortak "
+                         "kullanır). Yoksa önce Transfer → Explore → Samples'tan yer aç, aksi halde aktarım "
+                         "takılabilir.",
         "menu_play": "Çal",
         "menu_loop": "2. slotta loop (pad'ler)",
         "loop_tip": "Sesin sürekli kısmından çıt sesi olmadan dönen bir loop yapar (en fazla 5 sn). Twinshot, AMP "
@@ -917,6 +935,7 @@ def build_stylesheet():
     QLabel#section {{ color: #8e8e95; font-size: 10px; font-weight: 700; padding-top: 6px; }}
     QLabel#hint {{ color: #74747c; font-size: 11px; }}
     QLabel#empty {{ color: #8e8e95; font-size: 15px; }}
+    QLabel#warn {{ color: {LED['yellow']}; font-size: 11px; }}
     QLineEdit, QComboBox {{ background: #0c0c0e; border: 1px solid #2c2c31; border-radius: 4px; padding: 4px 8px;
         selection-background-color: {t['ink']}; selection-color: {t['oled']}; }}
     QLineEdit:focus, QComboBox:focus {{ border-color: #66666e; }}
@@ -1444,6 +1463,40 @@ class Waveform(QWidget):
             p.fillRect(x, r.top(), px, r.height(), QColor("#ffffff"))
 
 
+class KitDragButton(QPushButton):
+    """A FUNC-style key you drag (not click) onto Transfer: it carries the whole kit as files."""
+
+    def __init__(self, win):
+        super().__init__(caps(tr("kit_drag")))
+        self.win = win
+        self.setObjectName("func")
+        self.setToolTip(tr("kit_drag_tip"))
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        f = self.font()
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.6)
+        self.setFont(f)
+        self._press = None
+
+    def mousePressEvent(self, e):
+        self._press = e.position().toPoint()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._press is not None and (e.position().toPoint() - self._press).manhattanLength() >= \
+                QApplication.startDragDistance():
+            self._press = None
+            self.setDown(False)
+            self.win.drag_whole_kit(self)
+            return
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if self._press is not None:
+            self.win.statusBar().showMessage(tr("kit_drag_click"), 4000)
+        self._press = None
+        super().mouseReleaseEvent(e)
+
+
 class TrigGrid(QWidget):
     """The 64 Twinshot slots as four pages of 16 trig keys; lit keys show what's in each slot."""
     slot_clicked = pyqtSignal(int)
@@ -1761,11 +1814,16 @@ class MainWindow(QMainWindow):
         r2 = QHBoxLayout()
         self.export_btn = key_button(tr("kit_export_folder"))
         self.export_btn.clicked.connect(self.export_kit)
-        self.zip_btn = key_button(tr("kit_export_zip"), func=True)
+        self.zip_btn = key_button(tr("kit_export_zip"))
         self.zip_btn.clicked.connect(self.export_zip)
         r2.addWidget(self.export_btn)
         r2.addWidget(self.zip_btn)
         right.addLayout(r2)
+        self.drag_btn = KitDragButton(self)
+        right.addWidget(self.drag_btn)
+        self.slot_warn = QLabel(objectName="warn")
+        self.slot_warn.setWordWrap(True)
+        right.addWidget(self.slot_warn)
         right_w = QWidget()
         right_w.setLayout(right)
 
@@ -2407,6 +2465,9 @@ class MainWindow(QMainWindow):
         self.kit_label.setStyleSheet(f"font-weight:700; font-size:11px; letter-spacing:1px; "
                                      f"color:{theme('accent') if over else '#d4d4d8'};")
         self.kit_label.setToolTip(tr("kit_over") if over else "")
+        self.slot_warn.setText("⚠  " + tr("slots_warning", n=len(self.kit)))
+        self.slot_warn.setVisible(bool(self.kit))
+        self.drag_btn.setToolTip(tr("kit_drag_tip") + "\n\n" + tr("slots_warning", n=len(self.kit)))
         self.update_kit_buttons()
         self.refresh_kit_combo()
         self.trig.update()
@@ -2431,7 +2492,7 @@ class MainWindow(QMainWindow):
 
     def update_kit_buttons(self):
         self.kit_remove_btn.setEnabled(bool(self.kit_list.selectedItems()))
-        for b in (self.kit_clear_btn, self.export_btn, self.zip_btn):
+        for b in (self.kit_clear_btn, self.export_btn, self.zip_btn, self.drag_btn):
             b.setEnabled(bool(self.kit))
 
     # ---------- kit files
@@ -2603,11 +2664,47 @@ class MainWindow(QMainWindow):
             return
         self.settings.setValue("export_dir", d)
         errors = self.render_kit(lambda name, y: write_syntakt(y, Path(d) / name))
-        msg = tr("export_done", n=len(self.kit) - len(errors), folder=d)
+        msg = tr("export_done", n=len(self.kit) - len(errors), folder=d) + "\n\n⚠  " + \
+            tr("slots_warning", n=len(self.kit) - len(errors))
         if errors:
             msg += "\n\n" + tr("export_failed") + "\n" + "\n".join(errors[:10])
         QMessageBox.information(self, tr("export_done_title"), msg)
         open_folder(d)
+
+    def prepare_kit_files(self):
+        """Numbered Syntakt-format copies of the kit (01_..., 02_...) in a fresh folder; returns their paths."""
+        folder = KIT_DRAG_DIR / safe_name(self.kit_name or "Twinshot kit")
+        if KIT_DRAG_DIR.exists():
+            shutil.rmtree(KIT_DRAG_DIR, ignore_errors=True)  # only our own generated copies live here
+        folder.mkdir(parents=True, exist_ok=True)
+        paths = []
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+        try:
+            for i, p in enumerate(self.kit, 1):
+                s = self.samples.get(p)
+                if not s:
+                    continue
+                loop = p in self.kit_loop
+                try:
+                    dst = folder / kit_file_name(i, s, loop)
+                    shutil.copyfile(syntakt_file(s, loop), dst)  # converted copies are cached, so this is quick
+                    paths.append(dst)
+                except Exception as e:
+                    log(f"kit drag: {p}: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+        return paths
+
+    def drag_whole_kit(self, source):
+        paths = self.prepare_kit_files()
+        if not paths:
+            return
+        md = QMimeData()
+        md.setUrls([QUrl.fromLocalFile(str(p)) for p in paths])
+        drag = QDrag(source)
+        drag.setMimeData(md)
+        drag.setPixmap(drag_badge(tr("drag_count", n=len(paths))))
+        drag.exec(Qt.DropAction.CopyAction)
 
     def export_zip(self):
         if not self.kit:
