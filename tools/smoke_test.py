@@ -148,7 +148,7 @@ def main(samples_dir, shot=None):
     print("saved kit reload ok")
 
     if shot:
-        w.folder_tree.topLevelItem(1).setSelected(True)  # the demo folder, not the export folder
+        w.folder_tree.setCurrentItem(w.folder_tree.topLevelItem(1))  # the demo folder, not the export folder
         w.syntakt_mode.setChecked(False)
         w.activateWindow()
         w.table.setFocus()
@@ -157,9 +157,14 @@ def main(samples_dir, shot=None):
                 w.table.selectRow(i)
                 w.show_wave(s)
                 break
+        w.kit_list.setCurrentRow(2)
         wait(app, lambda: False, 0.6)
         w.grab().save(shot)
         print("screenshot:", shot)
+        w.display_combo.setCurrentIndex(1)  # red display theme
+        wait(app, lambda: False, 0.4)
+        w.grab().save(shot.replace(".png", "_red.png"))
+        w.display_combo.setCurrentIndex(0)
     w.close()
     print("OK")
 

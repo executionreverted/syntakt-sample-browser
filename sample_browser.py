@@ -30,16 +30,16 @@ from pathlib import Path
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
-from PyQt6.QtCore import (QAbstractTableModel, QMimeData, QModelIndex, QSettings, Qt, QThread, QTimer, QUrl,
-                          pyqtSignal)
-from PyQt6.QtGui import (QColor, QCursor, QDrag, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QPen,
+from PyQt6.QtCore import (QAbstractTableModel, QEvent, QMimeData, QModelIndex, QPointF, QRect, QRectF, QSettings, Qt,
+                          QThread, QTimer, QUrl, pyqtSignal)
+from PyQt6.QtGui import (QColor, QCursor, QDrag, QFont, QFontMetrics, QIcon, QKeySequence, QPainter, QPalette, QPen,
                          QPixmap, QShortcut)
 from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog, QHBoxLayout,
                              QHeaderView, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
                              QMenu, QMessageBox, QProgressBar, QPushButton, QSlider, QSplitter, QStackedWidget,
-                             QTableView, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+                             QTableView, QToolButton, QToolTip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 def _data_dir():
     if os.environ.get("SB_DATA_DIR"):
@@ -93,6 +93,10 @@ STRINGS = {
         "output": "Output",
         "default_output": "Default output",
         "language": "Language",
+        "app_caption": "Twinshot kit builder",
+        "display_white": "White display",
+        "display_red": "Red display",
+        "folders": "Folders",
         "add_folder": "+ Add folder",
         "categories": "Categories",
         "character": "Character",
@@ -233,6 +237,10 @@ STRINGS = {
         "output": "Çıkış",
         "default_output": "Varsayılan çıkış",
         "language": "Dil",
+        "app_caption": "Twinshot kit hazırlayıcı",
+        "display_white": "Beyaz ekran",
+        "display_red": "Kırmızı ekran",
+        "folders": "Klasörler",
         "add_folder": "+ Klasör ekle",
         "categories": "Kategori",
         "character": "Karakter",
@@ -832,8 +840,219 @@ class Scanner(QThread):
 
 # ---------------------------------------------------------------- widgets
 
-ACCENT = QColor("#5fd3b8")
-KIT_ROW_BG = QColor(47, 125, 109, 70)
+# ---------------------------------------------------------------- look & feel
+# Modelled on the hardware: matte black panel, grey silkscreen labels, red/pink secondary labels and FUNC key,
+# OLED menus (selected row = inverted), trig keys with coloured LED numbers.
+
+LED = {"red": "#ff4d4d", "yellow": "#f4d24e", "green": "#a6e15a", "white": "#f2f2f2", "pink": "#ff7d8c",
+       "dim": "#8d8d93"}
+CATEGORY_LED = {
+    "kick": "red", "tom": "red", "bass": "red",
+    "snare": "yellow", "clap": "yellow", "rim": "yellow",
+    "hat_closed": "white", "hat_open": "white", "cymbal": "white", "shaker": "white",
+    "perc": "green", "foley": "green", "fill": "green", "drum_loop": "green",
+    "pad": "pink", "keys": "pink", "synth": "pink", "vocal": "pink",
+    "atmos": "dim", "crackle": "dim", "fx": "dim", "other": "dim",
+}
+THEMES = {  # "white" = the current Syntakt OLED, "red" = the red display / amber FUNC look
+    "white": {"ink": "#f4f4f4", "oled": "#000000", "func": "#e3525b", "func_text": "#1c0b0c", "accent": "#ff4d4d"},
+    "red": {"ink": "#ff5a2e", "oled": "#0c0201", "func": "#e07a3a", "func_text": "#1c0e04", "accent": "#ff7a3d"},
+}
+THEME = "white"
+
+
+def theme(key):
+    return THEMES[THEME][key]
+
+
+def accent_color(alpha=255):
+    c = QColor(theme("accent"))
+    c.setAlpha(alpha)
+    return c
+
+
+def led_color(cat):
+    return QColor(LED[CATEGORY_LED.get(cat, "dim")])
+
+
+def caps(s):
+    """Upper-case like the panel labels (Turkish-aware: i -> İ)."""
+    return (s.replace("i", "İ") if LANG == "tr" else s).upper()
+
+
+_icons = {}
+
+
+def led_icon(cat):
+    """Small glowing LED dot in the category's colour."""
+    key = CATEGORY_LED.get(cat, "dim")
+    if key not in _icons:
+        pm = QPixmap(12, 12)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QColor(LED[key])
+        glow = QColor(c)
+        glow.setAlpha(60)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(0, 0, 12, 12)
+        p.setBrush(c)
+        p.drawEllipse(3, 3, 6, 6)
+        p.end()
+        _icons[key] = QIcon(pm)
+    return _icons[key]
+
+
+def build_stylesheet():
+    t = THEMES[THEME]
+    return f"""
+    QWidget {{ background: #141416; color: #e8e8ea; font-size: 12px; }}
+    QMainWindow, QStatusBar {{ background: #111113; }}
+    QStatusBar {{ color: #8e8e95; }}
+    QStatusBar QLabel {{ color: #66666e; background: transparent; }}
+    QLabel {{ background: transparent; }}
+    QLabel#wordmark {{ color: #fafafa; font-size: 19px; font-weight: 700; }}
+    QLabel#caption {{ color: {t['func']}; font-size: 9px; font-weight: 600; }}
+    QLabel#section {{ color: #8e8e95; font-size: 10px; font-weight: 700; padding-top: 6px; }}
+    QLabel#hint {{ color: #74747c; font-size: 11px; }}
+    QLabel#empty {{ color: #8e8e95; font-size: 15px; }}
+    QLineEdit, QComboBox {{ background: #0c0c0e; border: 1px solid #2c2c31; border-radius: 4px; padding: 4px 8px;
+        selection-background-color: {t['ink']}; selection-color: {t['oled']}; }}
+    QLineEdit:focus, QComboBox:focus {{ border-color: #66666e; }}
+    QComboBox::drop-down {{ border: none; width: 18px; }}
+    QComboBox QAbstractItemView {{ background: #0c0c0e; border: 1px solid #2c2c31; outline: 0;
+        selection-background-color: {t['ink']}; selection-color: {t['oled']}; }}
+    QPushButton, QToolButton {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #323236, stop:1 #252528);
+        border: 1px solid #3c3c41; border-bottom-color: #19191c; border-radius: 5px; padding: 6px 10px;
+        color: #e8e8ea; font-size: 11px; font-weight: 700; }}
+    QPushButton:hover, QToolButton:hover {{ border-color: #5c5c64; }}
+    QPushButton:pressed, QToolButton:pressed {{ background: #1c1c1f; }}
+    QPushButton:disabled {{ color: #4f4f56; border-color: #2a2a2e; background: #1f1f22; }}
+    QPushButton:checked {{ color: {t['accent']}; border: 1px solid {t['accent']}; background: #1c1617; }}
+    QPushButton#func {{ background: {t['func']}; color: {t['func_text']}; border: 1px solid {t['func']}; }}
+    QPushButton#func:hover {{ border-color: #ffffff; }}
+    QPushButton#func:disabled {{ background: #2e2224; color: #5c4c4e; border-color: #2e2224; }}
+    QToolButton::menu-indicator {{ image: none; width: 0; }}
+    QCheckBox {{ spacing: 6px; color: #d4d4d8; background: transparent; }}
+    QCheckBox::indicator {{ width: 9px; height: 9px; border-radius: 2px; background: #2a2a2e; border: 1px solid #4a4a50; }}
+    QCheckBox::indicator:checked {{ background: {t['accent']}; border-color: {t['accent']}; }}
+    QTreeWidget, QListWidget, QTableView {{ background: #0e0e10; alternate-background-color: #131316;
+        border: 1px solid #25252a; border-radius: 6px; outline: 0; }}
+    QTreeWidget::item, QListWidget::item {{ padding: 3px 4px; border-radius: 2px; }}
+    QTreeWidget#oled::item:selected, QListWidget#oled::item:selected {{ background: {t['ink']}; color: {t['oled']}; }}
+    QListWidget#kit::item:selected, QTableView::item:selected {{ background: #34353b; color: #ffffff; }}
+    QTreeWidget::branch {{ background: transparent; }}
+    QHeaderView::section {{ background: #17171a; color: #8e8e95; border: none; border-bottom: 1px solid #25252a;
+        padding: 4px 6px; font-size: 10px; font-weight: 700; }}
+    QTableCornerButton::section {{ background: #17171a; border: none; }}
+    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+    QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+    QScrollBar::handle {{ background: #3a3a40; border-radius: 3px; min-height: 24px; min-width: 24px; }}
+    QScrollBar::handle:hover {{ background: #50505a; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+    QSplitter::handle {{ background: #141416; }}
+    QSlider {{ background: transparent; }}
+    QSlider::groove:horizontal {{ height: 4px; background: #2a2a2e; border-radius: 2px; }}
+    QSlider::sub-page:horizontal {{ background: #6d6d75; border-radius: 2px; }}
+    QSlider::handle:horizontal {{ width: 14px; height: 14px; margin: -6px 0; border-radius: 7px;
+        background: qradialgradient(cx:0.5, cy:0.35, radius:0.7, stop:0 #55555c, stop:1 #141416);
+        border: 1px solid #5a5a62; }}
+    QMenu {{ background: #0c0c0e; border: 1px solid #2c2c31; padding: 4px; }}
+    QMenu::item {{ padding: 5px 18px; border-radius: 3px; background: transparent; }}
+    QMenu::item:selected {{ background: {t['ink']}; color: {t['oled']}; }}
+    QMenu::item:disabled {{ color: #55555b; }}
+    QMenu::separator {{ height: 1px; background: #2c2c31; margin: 4px 6px; }}
+    QMenu::indicator {{ width: 9px; height: 9px; border-radius: 2px; background: #2a2a2e; border: 1px solid #4a4a50;
+        margin-left: 4px; }}
+    QMenu::indicator:checked {{ background: {t['accent']}; border-color: {t['accent']}; }}
+    QToolTip {{ background: #000000; color: {t['ink']}; border: 1px solid #3a3a40; padding: 4px; }}
+    QProgressBar {{ background: #0c0c0e; border: 1px solid #2c2c31; border-radius: 3px; max-height: 8px;
+        color: transparent; }}
+    QProgressBar::chunk {{ background: {t['accent']}; border-radius: 2px; }}
+    """
+
+
+def section_label(text):
+    lbl = QLabel(caps(text), objectName="section")
+    f = lbl.font()
+    f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.4)
+    lbl.setFont(f)
+    return lbl
+
+
+def key_button(text, func=False, checkable=False):
+    b = QPushButton(caps(text), checkable=checkable)
+    if func:
+        b.setObjectName("func")
+    f = b.font()
+    f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.6)
+    b.setFont(f)
+    return b
+
+
+# ---------------------------------------------------------------- pixel font (for the OLED display)
+# 5x7 dot-matrix glyphs, one string of 7 rows per character.
+_FONT_SRC = {
+    "A": "01110 10001 10001 11111 10001 10001 10001", "B": "11110 10001 10001 11110 10001 10001 11110",
+    "C": "01110 10001 10000 10000 10000 10001 01110", "D": "11100 10010 10001 10001 10001 10010 11100",
+    "E": "11111 10000 10000 11110 10000 10000 11111", "F": "11111 10000 10000 11110 10000 10000 10000",
+    "G": "01110 10001 10000 10111 10001 10001 01111", "H": "10001 10001 10001 11111 10001 10001 10001",
+    "I": "01110 00100 00100 00100 00100 00100 01110", "J": "00111 00010 00010 00010 00010 10010 01100",
+    "K": "10001 10010 10100 11000 10100 10010 10001", "L": "10000 10000 10000 10000 10000 10000 11111",
+    "M": "10001 11011 10101 10101 10001 10001 10001", "N": "10001 10001 11001 10101 10011 10001 10001",
+    "O": "01110 10001 10001 10001 10001 10001 01110", "P": "11110 10001 10001 11110 10000 10000 10000",
+    "Q": "01110 10001 10001 10001 10101 10010 01101", "R": "11110 10001 10001 11110 10100 10010 10001",
+    "S": "01111 10000 10000 01110 00001 00001 11110", "T": "11111 00100 00100 00100 00100 00100 00100",
+    "U": "10001 10001 10001 10001 10001 10001 01110", "V": "10001 10001 10001 10001 10001 01010 00100",
+    "W": "10001 10001 10001 10101 10101 10101 01010", "X": "10001 10001 01010 00100 01010 10001 10001",
+    "Y": "10001 10001 10001 01010 00100 00100 00100", "Z": "11111 00001 00010 00100 01000 10000 11111",
+    "0": "01110 10001 10011 10101 11001 10001 01110", "1": "00100 01100 00100 00100 00100 00100 01110",
+    "2": "01110 10001 00001 00010 00100 01000 11111", "3": "11111 00010 00100 00010 00001 10001 01110",
+    "4": "00010 00110 01010 10010 11111 00010 00010", "5": "11111 10000 11110 00001 00001 10001 01110",
+    "6": "00110 01000 10000 11110 10001 10001 01110", "7": "11111 00001 00010 00100 01000 01000 01000",
+    "8": "01110 10001 10001 01110 10001 10001 01110", "9": "01110 10001 10001 01111 00001 00010 01100",
+    " ": "00000 00000 00000 00000 00000 00000 00000", ".": "00000 00000 00000 00000 00000 01100 01100",
+    ":": "00000 01100 01100 00000 01100 01100 00000", "-": "00000 00000 00000 11111 00000 00000 00000",
+    "_": "00000 00000 00000 00000 00000 00000 11111", "/": "00000 00001 00010 00100 01000 10000 00000",
+    "#": "01010 01010 11111 01010 11111 01010 01010", "(": "00010 00100 01000 01000 01000 00100 00010",
+    ")": "01000 00100 00010 00010 00010 00100 01000", "+": "00000 00100 00100 11111 00100 00100 00000",
+    "=": "00000 00000 11111 00000 11111 00000 00000", "<": "00010 00100 01000 10000 01000 00100 00010",
+    ">": "01000 00100 00010 00001 00010 00100 01000", "?": "01110 10001 00001 00010 00100 00000 00100",
+    "!": "00100 00100 00100 00100 00100 00000 00100", ",": "00000 00000 00000 00000 01100 00100 01000",
+    "'": "01100 00100 01000 00000 00000 00000 00000", "&": "01100 10010 10100 01000 10101 10010 01101",
+    "%": "11000 11001 00010 00100 01000 10011 00011", "~": "00000 00000 01000 10101 00010 00000 00000",
+    "*": "00000 00100 10101 01110 10101 00100 00000", "@": "01110 10001 00001 01101 10101 10101 01110",
+}
+PIXEL_FONT = {k: tuple(int(r, 2) for r in v.split()) for k, v in _FONT_SRC.items()}
+_TO_ASCII = str.maketrans({"Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U", "ç": "c", "ğ": "g",
+                           "ı": "i", "ö": "o", "ş": "s", "ü": "u", "×": "x", "·": "-", "–": "-", "—": "-",
+                           "≤": "<", "…": ".", "↻": "@", "[": "(", "]": ")"})
+
+
+def pixel_text_width(text, scale):
+    return max(0, len(text) * 6 * scale - scale)
+
+
+def draw_pixel_text(p, x, y, text, scale, color):
+    """Draw upper-case dot-matrix text; returns the x after the last glyph."""
+    text = text.translate(_TO_ASCII).upper()
+    for ch in text:
+        rows = PIXEL_FONT.get(ch, PIXEL_FONT["?"])
+        for r, bits in enumerate(rows):
+            if bits:
+                for c in range(5):
+                    if bits & (16 >> c):
+                        p.fillRect(int(x + c * scale), int(y + r * scale), scale, scale, color)
+        x += 6 * scale
+    return x
+
+
+def fit_pixel_text(text, scale, width):
+    max_chars = max(1, (width + scale) // (6 * scale))
+    text = text.translate(_TO_ASCII).upper()
+    return text if len(text) <= max_chars else text[:max(1, max_chars - 2)] + ".."
 COLUMNS = ["col_kit", "col_name", "col_category", "col_folder", "col_length", "col_key", "col_bpm", "col_character"]
 
 
@@ -867,7 +1086,7 @@ class SampleModel(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            return tr(COLUMNS[section])
+            return caps(tr(COLUMNS[section]))
         return None
 
     def flags(self, index):
@@ -896,9 +1115,12 @@ class SampleModel(QAbstractTableModel):
                 return " · ".join([tr("tag_" + t) for t in s.tags] + ([tr("tag_loop")] if s.is_loop else []))
         elif role == Qt.ItemDataRole.ToolTipRole:
             return s.path + ("\n" + s.err if s.err else "")
+        elif role == Qt.ItemDataRole.DecorationRole:
+            if c == 2:
+                return led_icon(s.category)
         elif role == Qt.ItemDataRole.BackgroundRole:
             if slot:
-                return KIT_ROW_BG
+                return accent_color(28)
         elif role == Qt.ItemDataRole.FontRole:
             if slot and c in (0, 1):
                 return self.bold
@@ -906,7 +1128,7 @@ class SampleModel(QAbstractTableModel):
             if s.err:
                 return QColor("#e06c6c")
             if c == 0 and slot:
-                return ACCENT
+                return accent_color()
             if c == 4 and s.dur > TWINSHOT_MAX_SEC:
                 return QColor("#d9a441")
             if c == 2 and s.guessed:
@@ -1070,27 +1292,32 @@ class KitList(QListWidget):
                 y = self.visualItemRect(self.item(self.drop_row)).top()
             else:
                 y = self.visualItemRect(self.item(self.count() - 1)).bottom()
-            p.setPen(QPen(ACCENT, 2))
+            p.setPen(QPen(QColor("#ffffff"), 2))
             p.drawLine(4, y, self.viewport().width() - 4, y)
 
 
 class Waveform(QWidget):
+    """The OLED display: slot box, sample name, waveform and a parameter row, drawn with a dot-matrix font."""
     clicked = pyqtSignal(float)  # position 0..1
+
+    PX = 2  # display pixel size
 
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(72)
+        self.setFixedHeight(158)
         self.setToolTip(tr("wave_tip"))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mins = self.maxs = None
         self.dur = 0.0
         self.pos = -1.0
         self.label = ""
-        self._cols = None  # cached ((w, h), [(x, y1, y2), ...])
+        self.meta = {}
+        self._cache = None
+        self._wave_rect = None
 
-    def set_audio(self, mono, sr, label=""):
+    def set_audio(self, mono, sr, label="", meta=None):
         self.label = label
-        self._cols = None
+        self.meta = meta or {}
         if mono is None or mono.size == 0:
             self.mins = self.maxs = None
             self.dur = 0.0
@@ -1101,6 +1328,10 @@ class Waveform(QWidget):
             self.mins, self.maxs = y.min(axis=1), y.max(axis=1)
             self.dur = mono.size / sr
         self.pos = -1.0
+        self.invalidate()
+
+    def invalidate(self):
+        self._cache = None
         self.update()
 
     def set_pos(self, frac):
@@ -1108,41 +1339,204 @@ class Waveform(QWidget):
         self.update()
 
     def mousePressEvent(self, e):
-        if self.mins is not None:
-            self.clicked.emit(min(max(e.position().x() / max(self.width(), 1), 0.0), 0.999))
+        if self.mins is None:
+            return
+        r = self._wave_rect
+        x = e.position().x()
+        if r is not None and r.left() <= x <= r.right():
+            self.clicked.emit(min(max((x - r.left()) / max(r.width(), 1), 0.0), 0.999))
+        else:
+            self.clicked.emit(0.0)
+
+    def resizeEvent(self, e):
+        self._cache = None
+        super().resizeEvent(e)
+
+    def render(self):
+        w, h, px = self.width(), self.height(), self.PX
+        ink, bg = QColor(theme("ink")), QColor(theme("oled"))
+        dim = QColor(ink)
+        dim.setAlpha(80)
+        pm = QPixmap(w, h)
+        pm.fill(QColor("#141416"))
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor("#2c2c31"), 1))
+        p.setBrush(QColor("#08080a"))
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 8, 8)  # bezel
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        d = QRect(10, 9, w - 20, h - 18)  # glass
+        p.fillRect(d, bg)
+        x0, y0, x1, y1 = d.left() + 10, d.top() + 8, d.right() - 10, d.bottom() - 7
+
+        if self.mins is None:
+            msg = fit_pixel_text(tr("wave_empty"), px, d.width() - 20)
+            draw_pixel_text(p, d.center().x() - pixel_text_width(msg, px) // 2, d.center().y() - 7 * px // 2,
+                            msg, px, ink)
+            self._wave_rect = None
+            p.end()
+            return pm
+
+        # row 1: inverted slot box, big name, outlined length box
+        slot = self.meta.get("slot", "--")
+        box_w = pixel_text_width(slot, px) + 4 * px
+        p.fillRect(x0, y0, box_w, 11 * px, ink)
+        draw_pixel_text(p, x0 + 2 * px, y0 + 2 * px, slot, px, bg)
+        length = f"{self.dur:.2f}s"
+        lw = pixel_text_width(length, px) + 4 * px
+        p.setPen(QPen(ink, px))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(x1 - lw + px // 2, y0 + px // 2, lw - px, 11 * px - px)
+        draw_pixel_text(p, x1 - lw + 2 * px, y0 + 2 * px, length, px, ink)
+        title_x = x0 + box_w + 4 * px
+        title = fit_pixel_text(self.label, 3, x1 - lw - 4 * px - title_x)
+        draw_pixel_text(p, title_x, y0 + 1, title, 3, ink)
+
+        # bottom row: parameter tags like the machine page (LABEL value)
+        by = y1 - 7 * px
+        x = x0
+        for k, v in self.meta.get("params", []):
+            kw = pixel_text_width(k, px) + 4 * px
+            if x + kw + pixel_text_width(v, px) > x1 - 40 * px:
+                break
+            p.fillRect(x, by - 2 * px, kw, 11 * px, ink)
+            draw_pixel_text(p, x + 2 * px, by, k, px, bg)
+            x = draw_pixel_text(p, x + kw + 2 * px, by, v, px, ink) + 5 * px
+        mode = self.meta.get("mode", "")
+        if mode:
+            draw_pixel_text(p, x1 - pixel_text_width(mode, px), by, mode, px, ink)
+
+        # waveform, pixel by pixel
+        wy0, wy1 = y0 + 11 * px + 5 * px, by - 2 * px - 5 * px
+        r = QRect(x0, wy0, x1 - x0, max(wy1 - wy0, 10))
+        self._wave_rect = r
+        mid = r.top() + r.height() // 2
+        half = r.height() // 2
+        cols = r.width() // px
+        n = self.mins.size
+        idx = np.unique((np.arange(cols) * n // max(cols, 1)).clip(0, n - 1))
+        lo = np.minimum.reduceat(self.mins, idx)
+        hi = np.maximum.reduceat(self.maxs, idx)
+        limit = int(cols * TWINSHOT_MAX_SEC / self.dur) if self.dur > TWINSHOT_MAX_SEC else cols + 1
+        for i, (a, b) in enumerate(zip(lo.tolist(), hi.tolist())):
+            col = i * cols // len(idx)
+            top = mid - int(round(max(b, 0.0) * half / px)) * px
+            bot = mid + int(round(max(-a, 0.0) * half / px)) * px
+            p.fillRect(r.left() + col * px, top, px, max(bot - top, px), ink if col < limit else dim)
+        if limit <= cols:  # Twinshot's 5 s cut, as a dotted line
+            lx = r.left() + limit * px
+            for yy in range(r.top(), r.bottom(), 3 * px):
+                p.fillRect(lx, yy, px, px, ink)
+            draw_pixel_text(p, lx + 3 * px, r.top(), "5S", px, ink)
+        p.end()
+        return pm
+
+    def paintEvent(self, e):
+        if self._cache is None or self._cache.size() != self.size():
+            self._cache = self.render()
+        p = QPainter(self)
+        p.drawPixmap(0, 0, self._cache)
+        r = self._wave_rect
+        if self.pos >= 0 and r is not None:
+            px = self.PX
+            x = r.left() + int(r.width() * min(self.pos, 1.0)) // px * px
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
+            p.fillRect(x, r.top(), px, r.height(), QColor("#ffffff"))
+
+
+class TrigGrid(QWidget):
+    """The 64 Twinshot slots as four pages of 16 trig keys; lit keys show what's in each slot."""
+    slot_clicked = pyqtSignal(int)
+    GAP = 4
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self.setMouseTracking(True)
+        self.hover = -1
+        self.setMinimumWidth(16 * 14 + 15 * self.GAP)
+
+    def key_size(self):
+        return max(12.0, min((self.width() - 15 * self.GAP) / 16, 28.0))
+
+    def resizeEvent(self, e):
+        s = self.key_size()
+        self.setFixedHeight(int(4 * s + 3 * self.GAP) + 2)
+        super().resizeEvent(e)
+
+    def rects(self):
+        s = self.key_size()
+        x0 = (self.width() - (16 * s + 15 * self.GAP)) / 2
+        return [QRectF(x0 + (i % 16) * (s + self.GAP), 1 + (i // 16) * (s + self.GAP), s, s) for i in range(64)]
+
+    def index_at(self, pos):
+        for i, r in enumerate(self.rects()):
+            if r.contains(pos):
+                return i
+        return -1
+
+    def mouseMoveEvent(self, e):
+        i = self.index_at(e.position())
+        if i != self.hover:
+            self.hover = i
+            self.update()
+
+    def leaveEvent(self, e):
+        self.hover = -1
+        self.update()
+
+    def mousePressEvent(self, e):
+        i = self.index_at(e.position())
+        if 0 <= i < len(self.win.kit):
+            self.slot_clicked.emit(i)
+
+    def event(self, e):
+        if e.type() == QEvent.Type.ToolTip:
+            i = self.index_at(QPointF(e.pos()))
+            if 0 <= i < len(self.win.kit):
+                QToolTip.showText(e.globalPos(), f"{i + 1:02d}  {os.path.basename(self.win.kit[i])}", self)
+            else:
+                QToolTip.hideText()
+            return True
+        return super().event(e)
 
     def paintEvent(self, e):
         p = QPainter(self)
-        w, h = self.width(), self.height()
-        p.fillRect(0, 0, w, h, QColor("#16181d"))
-        if self.mins is None:
-            p.setPen(QColor("#6b7280"))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, tr("wave_empty"))
-            return
-        mid = h / 2
-        if self._cols is None or self._cols[0] != (w, h):
-            n = self.mins.size
-            idx = np.unique(np.arange(w) * n // w)
-            lo = np.minimum.reduceat(self.mins, idx)
-            hi = np.maximum.reduceat(self.maxs, idx)
-            xs = (idx * w // n).tolist()
-            self._cols = ((w, h), list(zip(xs, (mid - hi * mid * 0.95).astype(int).tolist(),
-                                           (mid - lo * mid * 0.95).astype(int).tolist())))
-        p.setPen(QPen(QColor("#5fb3a1")))
-        for x, y1, y2 in self._cols[1]:
-            p.drawLine(x, y1, x, y2)
-        if self.dur > TWINSHOT_MAX_SEC:
-            x5 = int(w * TWINSHOT_MAX_SEC / self.dur)
-            p.fillRect(x5, 0, w - x5, h, QColor(0, 0, 0, 110))
-            p.setPen(QPen(QColor("#d9a441"), 1, Qt.PenStyle.DashLine))
-            p.drawLine(x5, 0, x5, h)
-            p.drawText(x5 + 4, 14, tr("wave_limit"))
-        if self.pos >= 0:
-            p.setPen(QPen(QColor("#f5f5f5"), 1))
-            x = int(w * min(self.pos, 1.0))
-            p.drawLine(x, 0, x, h)
-        p.setPen(QColor("#9aa4b2"))
-        p.drawText(6, h - 6, f"{self.label}   {secs(self.dur)}")
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        kit, win = self.win.kit, self.win
+        selected = set(win.kit_list.paths()) if hasattr(win, "kit_list") else set()
+        s = self.key_size()
+        f = QFont(self.font())
+        f.setPixelSize(max(8, int(s * 0.42)))
+        f.setBold(True)
+        p.setFont(f)
+        for i, r in enumerate(self.rects()):
+            filled = i < len(kit)
+            path = kit[i] if filled else None
+            sample = win.samples.get(path) if filled else None
+            p.setPen(QPen(QColor("#3a3a3f" if i != self.hover else "#5c5c64"), 1))
+            p.setBrush(QColor("#242427" if filled else "#1b1b1e"))
+            p.drawRoundedRect(r, 3, 3)
+            if filled:
+                c = led_color(sample.category) if sample else QColor(LED["dim"])
+                glow = QColor(c)
+                glow.setAlpha(55)
+                p.setPen(QPen(glow, 3))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRoundedRect(r.adjusted(2.5, 2.5, -2.5, -2.5), 2, 2)
+                p.setPen(QPen(c, 1))
+                p.drawRoundedRect(r.adjusted(3.5, 3.5, -3.5, -3.5), 2, 2)
+                p.setPen(c)
+                if path in win.kit_loop:
+                    p.setBrush(c)
+                    p.drawEllipse(QPointF(r.right() - 4, r.top() + 4), 1.6, 1.6)
+            else:
+                p.setPen(QColor("#4a4a50"))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, str(i + 1))
+            if path in selected:
+                p.setPen(QPen(QColor("#ffffff"), 1.6))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawRoundedRect(r.adjusted(0.8, 0.8, -0.8, -0.8), 3, 3)
 
 
 # ---------------------------------------------------------------- main window
@@ -1224,32 +1618,48 @@ class MainWindow(QMainWindow):
             self.lang_combo.addItem(name, code)
         self.lang_combo.setCurrentIndex(list(LANGUAGES).index(LANG))
         self.lang_combo.currentIndexChanged.connect(self.on_language)
+        self.display_combo = QComboBox()
+        for code in THEMES:
+            self.display_combo.addItem(tr("display_" + code), code)
+        self.display_combo.setCurrentIndex(list(THEMES).index(THEME))
+        self.display_combo.currentIndexChanged.connect(self.on_display)
+        brand = QVBoxLayout()
+        brand.setSpacing(0)
+        brand.addWidget(QLabel("Sample Browser", objectName="wordmark"))
+        caption = QLabel(caps(tr("app_caption")), objectName="caption")
+        f = caption.font()
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+        caption.setFont(f)
+        brand.addWidget(caption)
+        top.addLayout(brand)
+        top.addSpacing(16)
         top.addWidget(self.search, 1)
         for wdg in (self.type_combo, self.only5, self.syntakt_mode, self.autoplay, QLabel(tr("volume")),
-                    self.volume, QLabel(tr("output")), self.device_combo, self.lang_combo):
+                    self.volume, QLabel(tr("output")), self.device_combo, self.display_combo, self.lang_combo):
             top.addWidget(wdg)
 
         # left: folders + categories + character
         left = QVBoxLayout()
-        add_btn = QPushButton(tr("add_folder"))
+        add_btn = key_button(tr("add_folder"), func=True)
         add_btn.clicked.connect(self.add_folder)
         left.addWidget(add_btn)
-        self.folder_tree = QTreeWidget()
+        left.addWidget(section_label(tr("folders")))
+        self.folder_tree = QTreeWidget(objectName="oled")
         self.folder_tree.setHeaderHidden(True)
         self.folder_tree.itemSelectionChanged.connect(self.on_folder_selected)
         self.folder_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.folder_tree.customContextMenuRequested.connect(self.folder_menu)
         left.addWidget(self.folder_tree, 3)
-        left.addWidget(QLabel(tr("categories")))
-        self.cat_list = QListWidget()
+        left.addWidget(section_label(tr("categories")))
+        self.cat_list = QListWidget(objectName="oled")
         self.cat_list.itemSelectionChanged.connect(self.apply_filter)
         left.addWidget(self.cat_list, 4)
-        left.addWidget(QLabel(tr("character")))
+        left.addWidget(section_label(tr("character")))
         self.tag_buttons = {}
         for row_tags in TAG_ROWS:
             row = QHBoxLayout()
             for t in row_tags:
-                b = QPushButton(tr("tag_" + t), checkable=True)
+                b = key_button(tr("tag_" + t), checkable=True)
                 b.setToolTip(tr("tip_" + t))
                 b.toggled.connect(self.apply_filter)
                 self.tag_buttons[t] = b
@@ -1276,9 +1686,8 @@ class MainWindow(QMainWindow):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.table_menu)
 
-        self.empty_label = QLabel(tr("empty_state"))
+        self.empty_label = QLabel(tr("empty_state"), objectName="empty")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setStyleSheet("color:#9aa4b2; font-size:15px;")
         self.stack = QStackedWidget()
         self.stack.addWidget(self.empty_label)
         self.stack.addWidget(self.table)
@@ -1287,7 +1696,7 @@ class MainWindow(QMainWindow):
         sb = QHBoxLayout(self.similar_bar)
         sb.setContentsMargins(0, 0, 0, 0)
         self.similar_label = QLabel()
-        clear_sim = QPushButton(tr("close_similar"))
+        clear_sim = key_button(tr("close_similar"))
         clear_sim.clicked.connect(self.clear_similar)
         sb.addWidget(self.similar_label, 1)
         sb.addWidget(clear_sim)
@@ -1306,16 +1715,18 @@ class MainWindow(QMainWindow):
         right = QVBoxLayout()
         self.kit_label = QLabel()
         right.addWidget(self.kit_label)
-        hint = QLabel(tr("kit_hint"))
+        self.trig = TrigGrid(self)
+        self.trig.slot_clicked.connect(self.on_trig_clicked)
+        right.addWidget(self.trig)
+        hint = QLabel(tr("kit_hint"), objectName="hint")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#9aa4b2;")
         right.addWidget(hint)
         r0 = QHBoxLayout()
         self.kit_combo = QComboBox()
         self.kit_combo.activated.connect(self.on_kit_combo)
-        save_as = QPushButton(tr("kit_save_as"))
+        save_as = key_button(tr("kit_save_as"))
         save_as.clicked.connect(self.save_kit_as)
-        self.kit_more = QToolButton(text="⋯")
+        self.kit_more = QToolButton(text="•••")
         self.kit_more.setToolTip(tr("kit_more"))
         self.kit_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.kit_more_menu = QMenu(self)
@@ -1326,6 +1737,8 @@ class MainWindow(QMainWindow):
         r0.addWidget(self.kit_more)
         right.addLayout(r0)
         self.kit_list = KitList(self)
+        self.kit_list.setObjectName("kit")
+        self.kit_list.itemSelectionChanged.connect(self.trig.update)
         self.kit_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.kit_list.customContextMenuRequested.connect(self.kit_menu)
         self.kit_list.dropped.connect(self.insert_into_kit)
@@ -1338,17 +1751,17 @@ class MainWindow(QMainWindow):
         self.kit_list.itemSelectionChanged.connect(self.update_kit_buttons)
         right.addWidget(self.kit_list, 1)
         r1 = QHBoxLayout()
-        self.kit_remove_btn = QPushButton(tr("kit_remove"))
+        self.kit_remove_btn = key_button(tr("kit_remove"))
         self.kit_remove_btn.clicked.connect(self.remove_from_kit)
-        self.kit_clear_btn = QPushButton(tr("kit_clear"))
+        self.kit_clear_btn = key_button(tr("kit_clear"))
         self.kit_clear_btn.clicked.connect(self.clear_kit)
         r1.addWidget(self.kit_remove_btn)
         r1.addWidget(self.kit_clear_btn)
         right.addLayout(r1)
         r2 = QHBoxLayout()
-        self.export_btn = QPushButton(tr("kit_export_folder"))
+        self.export_btn = key_button(tr("kit_export_folder"))
         self.export_btn.clicked.connect(self.export_kit)
-        self.zip_btn = QPushButton(tr("kit_export_zip"))
+        self.zip_btn = key_button(tr("kit_export_zip"), func=True)
         self.zip_btn.clicked.connect(self.export_zip)
         r2.addWidget(self.export_btn)
         r2.addWidget(self.zip_btn)
@@ -1360,7 +1773,7 @@ class MainWindow(QMainWindow):
         self.split.addWidget(left_w)
         self.split.addWidget(center_w)
         self.split.addWidget(right_w)
-        self.split.setSizes([250, 850, 340])
+        self.split.setSizes([250, 820, 380])
         self.split.setStretchFactor(1, 1)
 
         root = QVBoxLayout()
@@ -1607,7 +2020,7 @@ class MainWindow(QMainWindow):
         items = [(tr("all_count", n=len(base)), None)] + [
             (f"{cat_name(c)}  ({counts[c]})", c) for c in CATEGORY_ORDER if counts.get(c)]
         for label, key in items:
-            it = QListWidgetItem(label)
+            it = QListWidgetItem(led_icon(key), label) if key else QListWidgetItem(label)
             it.setData(Qt.ItemDataRole.UserRole, key)
             self.cat_list.addItem(it)
             if key in cur or (not cur and key is None):
@@ -1724,15 +2137,28 @@ class MainWindow(QMainWindow):
         return item
 
     def wave_label(self, s, loop=False):
+        return s.stem + (" (loop)" if loop else "")
+
+    def wave_meta(self, s, loop=False):
+        """What the OLED shows around the waveform (machine-page style abbreviations)."""
+        slot = self.model.kit_index.get(s.path)
+        params = [("CAT", cat_name(s.category)), ("KEY", s.key or "-")]
+        if s.is_loop and s.bpm:
+            params.append(("BPM", str(s.bpm)))
+        params.append(("SR", f"{s.sr / 1000:g}K" if s.sr else "-"))
         if loop:
-            return f"{s.name}   ·   ↻ {tr('loop_marker')} ×3"
-        return s.name + ("   ·   " + tr("wave_syntakt") if self.syntakt_mode.isChecked() else "")
+            mode = "LOOP X3"
+        elif self.syntakt_mode.isChecked():
+            mode = "SYNTAKT 48K MONO"
+        else:
+            mode = "ORIGINAL"
+        return {"slot": f"{slot:02d}" if slot else "--", "params": params, "mode": mode}
 
     def show_wave(self, s):
         self.current = s
         try:
             _, sr, mono = self.load_audio(s)
-            self.wave.set_audio(mono, sr, self.wave_label(s))
+            self.wave.set_audio(mono, sr, self.wave_label(s), self.wave_meta(s))
         except Exception as e:
             self.wave.set_audio(None, 1, s.name)
             self.statusBar().showMessage(tr("err_read", name=s.name, error=e), 6000)
@@ -1749,7 +2175,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(tr("err_read", name=s.name, error=e), 6000)
             return
         if self.wave.label != self.wave_label(s, loop) or start == 0.0:
-            self.wave.set_audio(mono, sr, self.wave_label(s, loop))
+            self.wave.set_audio(mono, sr, self.wave_label(s, loop), self.wave_meta(s, loop))
         offset = int(start * data.shape[0])
         out = data[offset:, :2] if data.shape[1] >= 2 else np.repeat(data[offset:], 2, axis=1)
         out = out * (self.volume.value() / 100.0)
@@ -1958,13 +2384,13 @@ class MainWindow(QMainWindow):
                 label = f"{i:02d}   {os.path.basename(p)}"
             if loop:
                 label += f"   ·   ↻ {tr('loop_marker')}"
-            it = QListWidgetItem(label)
+            it = QListWidgetItem(led_icon(s.category if s else "other"), label)
             it.setData(Qt.ItemDataRole.UserRole, p)
             it.setToolTip(p + ("\n\n" + tr("loop_tip") if loop else ""))
             if not s:
                 it.setForeground(QColor("#6b7280"))
             elif loop:
-                it.setForeground(ACCENT)
+                it.setForeground(accent_color())
             elif s.dur > TWINSHOT_MAX_SEC:
                 it.setForeground(QColor("#d9a441"))
             self.kit_list.addItem(it)
@@ -1976,11 +2402,32 @@ class MainWindow(QMainWindow):
         self.model.set_kit(self.kit)
         size = self.kit_bytes()
         over = len(self.kit) > TWINSHOT_SLOTS or size > TWINSHOT_MEM
-        self.kit_label.setText(tr("kit_label", n=len(self.kit), slots=TWINSHOT_SLOTS, mb=f"{size / 1048576:.1f}"))
-        self.kit_label.setStyleSheet(f"font-weight:600; color:{'#e06c6c' if over else '#e5e7eb'};")
+        self.kit_label.setText(caps(tr("kit_label", n=len(self.kit), slots=TWINSHOT_SLOTS,
+                                       mb=f"{size / 1048576:.1f}")))
+        self.kit_label.setStyleSheet(f"font-weight:700; font-size:11px; letter-spacing:1px; "
+                                     f"color:{theme('accent') if over else '#d4d4d8'};")
         self.kit_label.setToolTip(tr("kit_over") if over else "")
         self.update_kit_buttons()
         self.refresh_kit_combo()
+        self.trig.update()
+
+    def on_trig_clicked(self, i):
+        self.kit_list.clearSelection()
+        it = self.kit_list.item(i)
+        if it:
+            it.setSelected(True)
+            self.kit_list.setCurrentItem(it)
+            self.kit_list.scrollToItem(it)
+            self.play_path(self.kit[i], force=True)
+
+    def on_display(self, _):
+        global THEME
+        THEME = self.display_combo.currentData()
+        self.settings.setValue("display", THEME)
+        QApplication.instance().setStyleSheet(build_stylesheet())
+        self.wave.invalidate()
+        self.refresh_kit(select=self.kit_list.paths())
+        self.model.set_kit(self.kit)
 
     def update_kit_buttons(self):
         self.kit_remove_btn.setEnabled(bool(self.kit_list.selectedItems()))
@@ -2252,30 +2699,35 @@ def log(msg):
 
 
 def dark_palette(app):
+    """Fusion + a matte-black palette (for dialogs and native bits) + the panel stylesheet."""
     app.setStyle("Fusion")
     p = QPalette()
-    base, alt, text = QColor("#1f2228"), QColor("#252932"), QColor("#e5e7eb")
-    p.setColor(QPalette.ColorRole.Window, QColor("#1a1d22"))
+    text = QColor("#e8e8ea")
+    p.setColor(QPalette.ColorRole.Window, QColor("#141416"))
     p.setColor(QPalette.ColorRole.WindowText, text)
-    p.setColor(QPalette.ColorRole.Base, base)
-    p.setColor(QPalette.ColorRole.AlternateBase, alt)
+    p.setColor(QPalette.ColorRole.Base, QColor("#0e0e10"))
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor("#131316"))
     p.setColor(QPalette.ColorRole.Text, text)
-    p.setColor(QPalette.ColorRole.Button, QColor("#2a2e37"))
+    p.setColor(QPalette.ColorRole.Button, QColor("#2a2a2e"))
     p.setColor(QPalette.ColorRole.ButtonText, text)
-    p.setColor(QPalette.ColorRole.Highlight, QColor("#2f7d6d"))
+    p.setColor(QPalette.ColorRole.Highlight, QColor("#34353b"))
     p.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
-    p.setColor(QPalette.ColorRole.ToolTipBase, QColor("#2a2e37"))
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor("#000000"))
     p.setColor(QPalette.ColorRole.ToolTipText, text)
-    p.setColor(QPalette.ColorRole.PlaceholderText, QColor("#7b8494"))
-    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#5b6270"))
+    p.setColor(QPalette.ColorRole.PlaceholderText, QColor("#6a6a72"))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#4f4f56"))
     app.setPalette(p)
-    app.setStyleSheet("QPushButton:checked { background:#2f7d6d; color:white; }")
+    app.setStyleSheet(build_stylesheet())
 
 
 def load_language():
-    global LANG
-    code = QSettings(str(DATA_DIR / "settings.ini"), QSettings.Format.IniFormat).value("language", "en", type=str)
+    """Language and display colour, read before any window is built."""
+    global LANG, THEME
+    s = QSettings(str(DATA_DIR / "settings.ini"), QSettings.Format.IniFormat)
+    code = s.value("language", "en", type=str)
     LANG = code if code in LANGUAGES else "en"
+    disp = s.value("display", "white", type=str)
+    THEME = disp if disp in THEMES else "white"
 
 
 def selftest():
@@ -2306,8 +2758,8 @@ def main():
         sys.exit(selftest())
     sys.excepthook = lambda t, v, tb: log("".join(traceback.format_exception(t, v, tb)))
     app = QApplication(sys.argv)
-    dark_palette(app)
     load_language()
+    dark_palette(app)
     open_main_window()
     sys.exit(app.exec())
 

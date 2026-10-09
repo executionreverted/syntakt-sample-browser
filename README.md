@@ -9,6 +9,12 @@ Windows and macOS (Apple Silicon) · free · open source
 
 ![Sample Browser](docs/screenshot.png)
 
+<details><summary>Red display theme</summary>
+
+![Sample Browser, red display](docs/screenshot_red.png)
+
+</details>
+
 *[Türkçe açıklama aşağıda ↓](#türkçe)*
 
 ## Why
@@ -40,6 +46,9 @@ fast. This app does the finding, listening and converting for you.
 - **Saved kits:** name your kits and switch between them from the kit panel. *⋯ → Load kit from folder* turns
   any folder (for example a Transfer backup of what's on your Syntakt) into a kit in file order.
 - **Click the waveform** to play from that point. Window layout, column widths and your kit are remembered.
+- **Feels like the hardware:** an OLED-style display with a dot-matrix font shows the selected sound,
+  the 64 Twinshot slots are drawn as four pages of trig keys that light up in the category's LED colour
+  (kicks red, snares yellow, hats white, percs green, pads pink). Pick a **white or red display** at the top.
 - **English and Turkish** interface (switch at the top right).
 - Everything stays on your computer. No account, no internet needed.
 
@@ -157,6 +166,9 @@ yorucu. Bu uygulama seçmeyi, dinlemeyi ve dönüştürmeyi kolaylaştırıyor.
 - **Kayıtlı kitler:** kitlerine ad ver, kit panelinden aralarında geçiş yap. *⋯ → Klasörden kit yükle* herhangi bir
   klasörü (ör. Syntakt'taki sample'ların Transfer yedeği) dosya sırasıyla kite çevirir.
 - **Dalga formuna tıkla**, oradan çalsın. Pencere düzeni, sütunlar ve kitin hatırlanır.
+- **Cihaz hissi:** seçili ses, piksel fontlu OLED tarzı bir ekranda görünür. 64 Twinshot slotu dört sayfa trig tuşu
+  olarak çizilir ve kategorinin LED renginde yanar (kick kırmızı, snare sarı, hat beyaz, perc yeşil, pad pembe).
+  Üstten **beyaz ya da kırmızı ekran** seçebilirsin.
 - Arayüz **İngilizce** açılır. **Türkçe** için sağ üstteki dil menüsünü kullan, seçimin hatırlanır.
 - Her şey senin bilgisayarında kalır. Hesap ya da internet gerekmez.
 
