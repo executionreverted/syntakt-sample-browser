@@ -31,28 +31,36 @@ fast. This app does the finding, listening and converting for you.
 - **Click or use the arrow keys to listen.** The waveform shows where the 5-second Twinshot limit cuts.
 - **Syntakt mode** (on by default): what you hear and what you drag out is the converted file — mono,
   48 kHz, 16-bit, silence trimmed, cut to 5 s with a fade, normalized to −1 dBFS. Small files, no MP3 artifacts.
-- **Kit panel:** collect your sounds, watch the *slots / MB* counter (64 / 32 MB), export them as numbered files.
+- **Kit panel:** collect your sounds, **drag to reorder** (the order is the slot order), watch the *slots / MB*
+  counter (64 / 32 MB), export them as numbered files. Sounds already in the kit are **highlighted in the table**
+  with their slot number.
+- **Click the waveform** to play from that point. Window layout, column widths and your kit are remembered.
+- **English and Turkish** interface (switch at the top right).
 - Everything stays on your computer. No account, no internet needed.
 
 ## How to use
 
-1. **+ Klasör ekle** (*Add folder*) → pick a sample pack folder. It gets scanned once.
+1. **+ Add folder** → pick a sample pack folder. It gets scanned once.
 2. Narrow it down with the **category list**, the **character buttons** or the **search box**
-   (e.g. `kick karanlık`, `pad fm`, `shaker`).
+   (e.g. `kick dark`, `pad fm`, `shaker`).
 3. **Click** a sound to play it. Browse with **↑ / ↓**.
-4. Add sounds to the kit: **double-click**, **Enter**, or drag them into the right panel.
+4. Add sounds to the kit: **double-click**, **Enter**, or drag them into the right panel (drop them exactly
+   where you want them). Drag inside the kit to change the order.
 5. Get them onto the Syntakt:
    - open **Elektron Transfer**, connect the Syntakt, go to the samples page, and
    - **drag** rows from the table or the kit panel into Transfer, **or**
-   - click **Dışa aktar** (*Export*), pick a folder, and drag that folder's files into Transfer.
+   - click **Export**, pick a folder, and drag that folder's files into Transfer.
 6. On the Syntakt, put the **SP Twinshot** machine on a digital track and choose your samples.
 
 | Key | Action |
 | --- | --- |
-| ↑ / ↓ | next / previous sound (plays it when *Otomatik çal* is on) |
+| ↑ / ↓ | next / previous sound (plays it when *Autoplay* is on) |
 | Space | play / stop |
-| Enter, double-click | add to kit |
-| Right-click | find similar, show in Explorer/Finder, copy path |
+| Enter, double-click | add to kit (or remove, if it's already in) |
+| Ctrl+F / Esc | search / clear search |
+| Del (in the kit) | remove from kit |
+| Ctrl+↑ / Ctrl+↓ (in the kit) | move the selected slots up / down |
+| Right-click | add/remove, find similar, show in Explorer/Finder, copy path |
 
 **Tips**
 
@@ -98,7 +106,6 @@ end to end.
 
 ## Notes
 
-- The interface is in Turkish for now. An English option is planned.
 - Not affiliated with or endorsed by Elektron. *Syntakt*, *Twinshot* and *Transfer* are Elektron's.
 - License: [MIT](LICENSE).
 
@@ -132,16 +139,21 @@ yorucu. Bu uygulama seçmeyi, dinlemeyi ve dönüştürmeyi kolaylaştırıyor.
 - **Tıkla ya da ok tuşlarıyla gez, çalsın.** Dalga formunda 5 saniye sınırının nereden kestiği görünür.
 - **Syntakt modu:** duyduğun ve sürüklediğin dosya dönüştürülmüş halidir (mono, 48 kHz, 16-bit, sessizlik
   kesilmiş, en fazla 5 sn, −1 dB normalize).
-- **Kit paneli:** seslerini topla, *slot / MB* sayacını takip et (64 / 32 MB), numaralı dosyalar olarak dışa aktar.
+- **Kit paneli:** seslerini topla, **sürükleyerek sırala** (sıra = slot sırası), *slot / MB* sayacını takip et
+  (64 / 32 MB), numaralı dosyalar olarak dışa aktar. Kitteki sesler **tabloda renkli** ve slot numarasıyla görünür.
+- **Dalga formuna tıkla**, oradan çalsın. Pencere düzeni, sütunlar ve kitin hatırlanır.
+- Arayüz **İngilizce** açılır. **Türkçe** için sağ üstteki dil menüsünü kullan, seçimin hatırlanır.
 - Her şey senin bilgisayarında kalır. Hesap ya da internet gerekmez.
 
 ### Nasıl kullanılır?
 
-1. **+ Klasör ekle** ile bir sample klasörü seç.
+1. **+ Klasör ekle** (İngilizcede *+ Add folder*) ile bir sample klasörü seç.
 2. Soldaki **kategori listesi**, **karakter düğmeleri** ya da **arama kutusu** ile daralt (`kick karanlık`,
-   `pad fm`).
+   `kick dark`, `pad fm`, ikisi de çalışır).
 3. Bir sese **tıkla**, çalsın. **↑ / ↓** ile gez, **Boşluk** ile çal/durdur.
-4. Kite eklemek için **çift tıkla**, **Enter**'a bas ya da sağdaki panele sürükle.
+4. Kite eklemek için **çift tıkla**, **Enter**'a bas ya da sağdaki panelde istediğin yere sürükle.
+   Zaten kitteyse aynı hareket kitten çıkarır. Kitin içinde sürükleyerek sırayı değiştir,
+   **Del** ile çıkar, **Ctrl+↑/↓** ile kaydır.
 5. **Elektron Transfer**'i aç, Syntakt'ı bağla. Tablodan ya da kit panelinden sesleri Transfer'e **sürükle**.
    Ya da **Dışa aktar** ile bir klasöre çıkar, oradan sürükle.
 6. Syntakt'ta bir dijital track'e **SP Twinshot** makinesini koy ve sample'larını seç.
