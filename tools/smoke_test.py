@@ -3,16 +3,19 @@
 Usage: python tools/smoke_test.py <samples_dir> [screenshot.png]
 Uses a throwaway data folder, plays no audio.
 """
+import io
 import os
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 
 os.environ["SB_DATA_DIR"] = tempfile.mkdtemp(prefix="sb_smoke_")
 sys.stdout.reconfigure(encoding="utf-8")  # Windows CI consoles are cp1252
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -99,7 +102,53 @@ def main(samples_dir, shot=None):
     assert sb.syntakt_file(picks[0]).exists()
     assert sb.drag_badge("3 samples").width() > 0
 
+    # seamless pad loop: no jump at the seam (end -> start), at most 5 s
+    pad = next(s for s in w.samples.values() if s.category == "pad" and s.dur > 5)
+    y = sb.loop_ready(pad.path)
+    seam = abs(float(y[-1]) - float(y[0]))
+    step = float(np.median(np.abs(np.diff(y))))
+    print(f"loop {pad.name}: {y.size / 48000:.2f} s, seam jump {seam:.4f} vs typical step {step:.4f}")
+    assert y.size <= 5 * 48000 and seam < 10 * step + 1e-3
+    w.set_loop([picks[-1].path], True)
+    assert picks[-1].path in w.kit_loop and "loop" in w.kit_list.item(len(w.kit) - 1).text()
+
+    # zip export (same writer the button uses, without the file dialog)
+    zpath = Path(os.environ["SB_DATA_DIR"]) / "kit.zip"
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        def write(name, audio):
+            buf = io.BytesIO()
+            sb.write_syntakt(audio, buf)
+            z.writestr(f"kit/{name}", buf.getvalue())
+        assert w.render_kit(write) == []
+    with zipfile.ZipFile(zpath) as z:
+        names = z.namelist()
+        assert len(names) == 14 and names[-1].endswith("_loop.wav"), names[-1]
+        info = sf.info(io.BytesIO(z.read(names[0])))
+        assert (info.samplerate, info.channels, info.subtype) == (48000, 1, "PCM_16")
+    print("zip ok:", len(names), "files,", names[0], "...", names[-1])
+
+    # saved kits: save under a name, switch away, load it back from the combo
+    w.kit_name = "Night Bus"
+    w.save_kit(sb.KITS_DIR / "Night Bus.json")
+    w.refresh_kit()
+    assert w.kit_combo.findText("Night Bus") > 0 and w.kit_is_saved()
+    saved = list(w.kit)
+
+    # load a kit from a folder (the export folder) -> scanned, kit in file order, no prompt (kit is saved)
+    w.load_kit_from_folder(str(out))
+    assert wait(app, lambda: not w.scanner.isRunning() and not w.scanner.pending()), "folder scan did not finish"
+    wait(app, lambda: False, 0.3)
+    assert [Path(p).name for p in w.kit] == sorted(f.name for f in out.iterdir()), w.kit[:3]
+    assert all(p in w.samples for p in w.kit)
+    print("kit from folder ok:", len(w.kit), "samples")
+    w.kit_name = ""  # pretend it's unsaved work; switching back must ask -> answer yes automatically
+    sb.QMessageBox.question = staticmethod(lambda *a, **k: sb.QMessageBox.StandardButton.Yes)
+    w.on_kit_combo(w.kit_combo.findText("Night Bus"))
+    assert w.kit == saved and w.kit_name == "Night Bus" and picks[-1].path in w.kit_loop
+    print("saved kit reload ok")
+
     if shot:
+        w.folder_tree.topLevelItem(1).setSelected(True)  # the demo folder, not the export folder
         w.syntakt_mode.setChecked(False)
         w.activateWindow()
         w.table.setFocus()
